@@ -13,7 +13,7 @@ from flask import Flask, jsonify
 #################################################
 # Database Setup
 #################################################
-engine = create_engine("sqlite:///hawaii.sqlite")
+engine = create_engine("sqlite:///Resources/hawaii.sqlite")
 
 # reflect an existing database into a new model
 Base = automap_base()
@@ -43,19 +43,21 @@ def welcome():
     """List all available api routes."""
     return (
         f"Available Routes:<br/>"
-        f"/api/v1.0/precipitation"
-        f"/api/v1.0/stations"
-        f"/api/v1.0/tobs"
-        f"/api/v1.0/<start>"
-        f"/api/v1.0/<start>/<end>"
+        f"/api/v1.0/precipitation<br/>"
+        f"/api/v1.0/stations<br/>"
+        f"/api/v1.0/tobs<br/>"
+        f"/api/v1.0/&lt;start&gt;<br/>"
+        f"/api/v1.0/&lt;start&gt;/&lt;end&gt;<br/>"
     )
 
 @app.route("/api/v1.0/precipitation")
 def precipitation():
-    one_year = dt.datetime(2016, 8, 23)
-    query = session.query(Measurements.prcp).filter(Measurements.date > one_year).filter(Measurements.station == 'USC00519281')
+    latest_date = session.query(func.max(Measurements.date)).scalar()
+    latest_date = dt.datetime.strptime(latest_date, "%Y-%m-%d")
+    one_year_ago = latest_date - dt.timedelta(days=365)
+    query = session.query(Measurements.date, Measurements.prcp).filter(Measurements.date > one_year_ago).filter(Measurements.station == 'USC00519281')
     prcp_results = {}
-    for x in query.all():
+    for date, prcp in query.all():
         prcp_results[date.strftime('%Y-%m-%d')] = prcp
     return jsonify(prcp_results)
 @app.route("/api/v1.0/stations")
@@ -76,34 +78,40 @@ def tobs():
     return jsonify(most_active)
 
 @app.route("/api/v1.0/<start>")
-def start():
-    start_date = dt.datetime(2017, 8, 23)
+def start(start):
     query = session.query(
         func.min(Measurements.tobs),
         func.avg(Measurements.tobs),
         func.max(Measurements.tobs)
-    ).filter(Measurements.date >= start_date)
-    result = query.all()
-    return jsonify({
-            'start_date': start_date,
-            'tmin': result.tmin,
-            'tavg': result.tavg,
-            'tmax': result.tmax
-        })
+    ).filter(Measurements.date >= start).all()
+
+    result_start = {
+            'start_date': start,
+            'tmin': query[0][0],
+            'tavg': query[0][1],
+            'tmax': query[0][2]
+        }
+    return jsonify(result_start)
 
 @app.route("/api/v1.0/<start>/<end>")
-def start_end():
-    start_date = dt.datetime(2017, 8, 23)
-    end_date = dt.datetime(2017,1,1)
+def start_end(start, end):
+    try:
+        start_date = dt.datetime.strptime(start, "%Y-%m-%d")
+        end_date = dt.datetime.strptime(end, "%Y-%m-%d")
+    except ValueError:
+        return jsonify({"error": "Incorrect date format, should be YYYY-MM-DD"}), 400
     query = session.query(
         func.min(Measurements.tobs),
         func.avg(Measurements.tobs),
         func.max(Measurements.tobs)
-    ).filter(Measurements.date >= start_date).filter(Measurements.date < end_date)
-    result = query.all()
-    return jsonify({
-            'start_date': start_date,
-            'tmin': result.tmin,
-            'tavg': result.tavg,
-            'tmax': result.tmax
-        })
+    ).filter(Measurements.date >= start_date).filter(Measurements.date <= end_date).all()
+    if query[0][0] is None:
+        return jsonify({"error": "No temperature data found for the given date range."}), 404
+    result_startend = {
+        'start_date': start,
+        'end_date': end,
+        'tmin': query[0][0],
+        'tavg': query[0][1],
+        'tmax': query[0][2]
+    }
+    return jsonify(result_startend)
