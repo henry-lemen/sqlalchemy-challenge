@@ -58,7 +58,7 @@ def precipitation():
     query = session.query(Measurements.date, Measurements.prcp).filter(Measurements.date > one_year_ago).filter(Measurements.station == 'USC00519281')
     prcp_results = {}
     for date, prcp in query.all():
-        prcp_results[date.strftime('%Y-%m-%d')] = prcp
+        prcp_results[date] = prcp
     return jsonify(prcp_results)
 @app.route("/api/v1.0/stations")
 def stations():
@@ -71,8 +71,10 @@ def stations():
 @app.route("/api/v1.0/tobs")
 def tobs():
     session = Session(engine)
-    one_year = dt.datetime(2016, 8, 23)
-    most_active_results = session.query(Measurements.tobs).filter(Measurements.date > one_year).filter(Measurements.station == 'USC00519281')
+    latest_date = session.query(func.max(Measurements.date)).scalar()
+    latest_date = dt.datetime.strptime(latest_date, "%Y-%m-%d")
+    one_year_ago = latest_date - dt.timedelta(days=365)
+    most_active_results = session.query(Measurements.tobs).filter(Measurements.date > one_year_ago).filter(Measurements.station == 'USC00519281')
     session.close()
     most_active = list(np.ravel(most_active_results))
     return jsonify(most_active)
